@@ -1,0 +1,7 @@
+{
+  "appId": "com.anythinghub.gamepad",
+  "appName": "Gamepad",
+  "webDir": "www",
+  "server": { "androidScheme": "http", "cleartext": true },
+  "android": { "allowMixedContent": true, "backgroundColor": "#171212" }
+}

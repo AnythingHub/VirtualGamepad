@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>Gamepad</title>
+<style>
+:root{--bg:#171212}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;-webkit-touch-callout:none;user-select:none;-webkit-user-select:none;touch-action:none}
+html,body{margin:0;height:100%;background:var(--bg);overflow:hidden;font-family:system-ui,-apple-system,Roboto,sans-serif;color:#ffdede}
+#stage{position:fixed;inset:0}
+
+/* ---------- gamepad elements ---------- */
+.el{position:absolute;--c:#9b0000;display:flex;align-items:center;justify-content:center;border-radius:50%;
+  background:var(--c);border:max(2px,calc(var(--h)*.045)) solid color-mix(in srgb,var(--c) 68%,#000);
+  color:#ffe6e6;font-weight:600;font-size:calc(var(--h)*.3);line-height:1.1;text-align:center;white-space:pre}
+.el.small{font-size:calc(var(--h)*.2)}
+.el.on{background:color-mix(in srgb,var(--c) 55%,#fff)}
+.el svg{pointer-events:none}
+.el .icon{width:55%;height:55%}
+.el.dpad svg{position:absolute;inset:0;width:100%;height:100%}
+.el.dpad polyline{fill:none;stroke:#ffe6e6;stroke-width:9;stroke-linecap:round;stroke-linejoin:round;opacity:.85}
+.el.dpad polyline.on{stroke:#fff;opacity:1;stroke-width:13}
+.knob{position:absolute;left:20%;top:20%;width:60%;height:60%;border-radius:50%;pointer-events:none;
+  background:color-mix(in srgb,var(--c) 14%,#fff);border:max(2px,calc(var(--h)*.03)) solid color-mix(in srgb,var(--c) 40%,#fff);
+  display:flex;align-items:center;justify-content:center;color:var(--c);font-size:calc(var(--h)*.24);font-weight:700}
+.el.sel::after{content:'';position:absolute;inset:-5px;border:2px solid #f2e34a;border-radius:0;pointer-events:none}
+body.edit .el{outline:1px dashed #ffffff40}
+
+/* ---------- overlay ui ---------- */
+.ui{position:fixed;background:rgba(150,10,10,.93);color:#fff;border-radius:12px;z-index:20}
+.ui[hidden],.modal[hidden]{display:none!important}
+#gear{top:1.2vh;left:50%;transform:translateX(-50%);display:flex;gap:1.2vh;align-items:center;padding:.6vh 2vh;background:rgba(150,10,10,.45);font-size:3.4vh;border:0;color:#fff}
+#dot{width:2.2vh;height:2.2vh;border-radius:50%;background:#777}
+#dot.ok{background:#3ddc55}#dot.err{background:#f55}
+#bar{left:50%;bottom:1.2vh;transform:translateX(-50%);display:flex;gap:1vh;padding:.6vh 1.6vh}
+#bar button,.ibtn{background:none;border:0;color:#fff;font-size:5vh;line-height:1;padding:.8vh 2vh;border-radius:8px}
+#bar button:active,.ibtn:active{background:#ffffff30}
+#panel{top:0;left:50%;transform:translateX(-50%);width:min(46vw,380px);padding:1.4vh 2vh;border-radius:0 0 12px 12px}
+#panel .row{display:flex;align-items:center;gap:1.6vh;margin:.6vh 0;font-size:max(14px,3.6vh)}
+#panel .sl{flex:1;display:flex;flex-direction:column}
+#panel small{font-size:max(11px,2.6vh);opacity:.85}
+#panel input[type=range]{width:100%;accent-color:#ddd;height:3.6vh}
+#panel input[type=checkbox]{width:3.4vh;height:3.4vh;accent-color:#fff}
+#panel .icons{display:flex;justify-content:space-between;margin-top:.4vh}
+#swatches{display:flex;flex-wrap:wrap;gap:1.2vh;margin-top:.8vh}
+#swatches i{width:4.6vh;height:4.6vh;border-radius:50%;border:2px solid #fff8;display:block}
+#hint{left:1.5vh;bottom:1.5vh;font-size:max(11px,2.6vh);padding:.6vh 1.4vh;background:rgba(0,0,0,.45);color:#ffd}
+
+.modal{position:fixed;inset:0;background:#000a;display:flex;align-items:center;justify-content:center;z-index:50}
+.card{background:#2a1414;border:1px solid #a33;border-radius:14px;padding:2vh 3vh;width:min(86vw,460px);max-height:92vh;overflow:auto;touch-action:pan-y;font-size:16px}
+.card h3{margin:0 0 1vh;font-size:18px}
+.card .r2{display:flex;gap:8px;margin:8px 0}
+.card input[type=text],.card input[type=number]{flex:1;min-width:0;padding:10px;border-radius:8px;border:1px solid #a55;background:#180c0c;color:#fff;font-size:16px;user-select:text;-webkit-user-select:text;touch-action:manipulation}
+.card input#port{flex:0 0 90px}
+.b{background:#b00;color:#fff;border:0;border-radius:8px;padding:10px 14px;font-size:15px;flex:1}
+.b.alt{background:#4a2a2a}
+.b:active{filter:brightness(1.3)}
+.card label{display:flex;gap:8px;align-items:center;margin:10px 0}
+.card p{margin:6px 0;opacity:.85;font-size:14px}
+.chips{display:grid;grid-template-columns:repeat(auto-fill,minmax(92px,1fr));gap:8px;margin:8px 0}
+</style>
+</head>
+<body>
+<div id="stage"></div>
+
+<button id="gear" class="ui"><span id="dot"></span>⚙</button>
+<div id="hint" class="ui" hidden>Drag to move · tap to edit</div>
+
+<div id="panel" class="ui" hidden>
+  <label class="row"><input type="checkbox" id="cwh"><span>Custom width/height</span></label>
+  <div class="row"><span style="width:14vh">Width</span><div class="sl"><input type="range" id="sw" min="30" max="250"><small id="swv">100%</small></div></div>
+  <div class="row"><span style="width:14vh">Height</span><div class="sl"><input type="range" id="sh" min="30" max="250"><small id="shv">100%</small></div></div>
+  <div class="icons">
+    <button class="ibtn" id="pal">🎨</button>
+    <button class="ibtn" id="rst">↺</button>
+    <button class="ibtn" id="del">🗑</button>
+  </div>
+  <div id="swatches" hidden></div>
+</div>
+
+<div id="bar" class="ui" hidden>
+  <button id="bBack">←</button>
+  <button id="bTog">⌃</button>
+  <button id="bAdd">+</button>
+  <button id="bSet">⚙</button>
+</div>
+
+<div id="dlg" class="modal" hidden><div class="card">
+  <h3>Connection</h3>
+  <p>Run <b>server.py</b> on your PC, then enter the IP it prints.</p>
+  <div class="r2"><input type="text" id="ip" placeholder="PC IP e.g. 192.168.1.5" inputmode="decimal" autocomplete="off"><input type="number" id="port" placeholder="8080"></div>
+  <div class="r2"><button class="b" id="conn">Save &amp; connect</button></div>
+  <p id="st">not connected</p>
+  <label><input type="checkbox" id="hap"> Vibration on press</label>
+  <div class="r2"><button class="b alt" id="bEdit">Edit layout</button><button class="b alt" id="bReset">Reset layout</button></div>
+  <div class="r2"><button class="b" id="bClose">Close</button></div>
+</div></div>
+
+<div id="add" class="modal" hidden><div class="card">
+  <h3>Add element</h3>
+  <div class="chips" id="chips"></div>
+  <div class="r2"><button class="b" id="addClose">Cancel</button></div>
+</div></div>
+
+<script>
+(()=>{
+const $=s=>document.querySelector(s);
+const stage=$('#stage');
+const clone=o=>JSON.parse(JSON.stringify(o));
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+
+/* ---------- element types ---------- */
+const SVG='<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">';
+const ICON={
+  back:SVG+'<rect x="3.5" y="8" width="12" height="12" rx="2"/><path d="M8 4.5h10.5a2 2 0 0 1 2 2V17"/></svg>',
+  guide:SVG+'<circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="3"/></svg>',
+  start:SVG+'<path d="M4 7h16M4 12h16M4 17h16"/></svg>'
+};
+const DPAD='<svg viewBox="0 0 200 200"><polyline data-d="up" points="84,42 100,26 116,42"/><polyline data-d="left" points="42,84 26,100 42,116"/><polyline data-d="right" points="158,84 174,100 158,116"/><polyline data-d="down" points="84,158 100,174 116,158"/></svg>';
+const TYPES={
+  lt:{kind:'btn',k:'lt',label:'LT',base:.238,name:'LT'},
+  lb:{kind:'btn',k:'lb',label:'LB',base:.199,name:'LB'},
+  rt:{kind:'btn',k:'rt',label:'RT',base:.238,name:'RT'},
+  rb:{kind:'btn',k:'rb',label:'RB',base:.199,name:'RB'},
+  a:{kind:'btn',k:'a',label:'A',base:.173,name:'A'},
+  b:{kind:'btn',k:'b',label:'B',base:.173,name:'B'},
+  x:{kind:'btn',k:'x',label:'X',base:.173,name:'X'},
+  y:{kind:'btn',k:'y',label:'Y',base:.173,name:'Y'},
+  dpad:{kind:'dpad',base:.397,name:'D-Pad'},
+  lstick:{kind:'stick',side:'l',label:'L',base:.397,name:'Left stick'},
+  rstick:{kind:'stick',side:'r',label:'R',base:.397,name:'Right stick'},
+  back:{kind:'btn',k:'back',icon:'back',base:.14,name:'Back'},
+  guide:{kind:'btn',k:'guide',icon:'guide',base:.14,name:'Guide'},
+  start:{kind:'btn',k:'start',icon:'start',base:.14,name:'Start'},
+  l3:{kind:'btn',k:'l3',label:'Left\nStick',base:.13,small:1,name:'L3 click'},
+  r3:{kind:'btn',k:'r3',label:'Right\nStick',base:.13,small:1,name:'R3 click'}
+};
+const RED='#9b0000';
+const mk=(t,x,y,id)=>({id:id||t,t,x,y,sx:1,sy:1,c:RED,cwh:TYPES[t].kind==='btn'});
+/* default layout = your Remote Gamepad screenshot (x,y = centre, fraction of screen) */
+const DEF=[
+  ['lt',.070,.143],['lb',.170,.294],['dpad',.119,.622],
+  ['rt',.930,.143],['rb',.830,.294],
+  ['y',.881,.488],['x',.821,.622],['b',.941,.624],['a',.881,.758],
+  ['rstick',.670,.760],
+  ['back',.400,.250],['guide',.500,.250],['start',.600,.250],
+  ['l3',.449,.550],['r3',.549,.550]
+].map(([t,x,y])=>mk(t,x,y));
+
+/* ---------- state ---------- */
+const load=k=>{try{return JSON.parse(localStorage.getItem(k))}catch(e){return null}};
+const store=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}};
+let layout=load('gp_layout');
+if(!Array.isArray(layout)||!layout.length)layout=clone(DEF);
+layout=layout.filter(o=>TYPES[o.t]);
+let cfg=Object.assign({ip:'',port:8080,haptic:true},load('gp_cfg')||{});
+let edit=false,sel=null,panelOpen=true;
+const save=()=>store('gp_layout',layout);
+const saveCfg=()=>store('gp_cfg',cfg);
+const cur=()=>layout.find(o=>o.id===sel);
+
+/* ---------- render ---------- */
+function styleEl(o,el){
+  const W=innerWidth,H=innerHeight,T=TYPES[o.t];
+  const w=T.base*H*o.sx,h=T.base*H*o.sy;
+  el.style.cssText=`left:${o.x*W-w/2}px;top:${o.y*H-h/2}px;width:${w}px;height:${h}px;--c:${o.c};--h:${Math.min(w,h)}px`;
+}
+function inner(T){
+  if(T.kind==='dpad')return DPAD;
+  if(T.kind==='stick')return `<div class="knob">${T.label}</div>`;
+  return T.icon?ICON[T.icon]:T.label;
+}
+function render(){
+  stage.innerHTML='';
+  layout.forEach(o=>{
+    const T=TYPES[o.t],el=document.createElement('div');
+    el.className='el '+T.kind+(T.small?' small':'')+(edit&&sel===o.id?' sel':'');
+    el.dataset.id=o.id;
+    el.innerHTML=inner(T);
+    styleEl(o,el);
+    stage.appendChild(el);
+  });
+}
+const elOf=id=>stage.querySelector(`[data-id="${CSS.escape(id)}"]`);
+addEventListener('resize',render);
+
+/* ---------- network ---------- */
+const S={b:new Set(),lx:0,ly:0,rx:0,ry:0,lt:0,rt:0};
+let dirty=true,ws=null,tm=null;
+const dot=$('#dot'),st=$('#st');
+function status(t,cls){st.textContent=t;dot.className=cls||''}
+function connect(){
+  clearTimeout(tm);
+  if(ws){ws.onclose=null;ws.onopen=null;try{ws.close()}catch(e){}ws=null}
+  if(!cfg.ip){status('no PC address set','err');return}
+  status('connecting to '+cfg.ip+'…','');
+  try{ws=new WebSocket(`ws://${cfg.ip}:${cfg.port}/ws`)}catch(e){status('bad address','err');return}
+  ws.onopen=()=>{status('connected to '+cfg.ip,'ok');dirty=true};
+  ws.onclose=()=>{status('disconnected — retrying…','err');tm=setTimeout(connect,1500)};
+  ws.onerror=()=>{};
+}
+setInterval(()=>{
+  if(!dirty||!ws||ws.readyState!==1)return;
+  dirty=false;
+  ws.send(JSON.stringify({b:[...S.b],lx:S.lx,ly:S.ly,rx:S.rx,ry:S.ry,lt:S.lt,rt:S.rt}));
+},8);
+
+/* ---------- play input ---------- */
+const act=new Map();
+const buzz=()=>{if(cfg.haptic){try{navigator.vibrate&&navigator.vibrate(10)}catch(e){}}};
+function key(k,v){
+  if(k==='lt'||k==='rt')S[k]=v?1:0;
+  else v?S.b.add(k):S.b.delete(k);
+  dirty=true;
+}
+function dpadMove(a,e){
+  const r=a.el.getBoundingClientRect(),R=r.width/2;
+  const dx=e.clientX-(r.left+R),dy=e.clientY-(r.top+r.height/2),d=Math.hypot(dx,dy);
+  const now=new Set();
+  if(d>R*.18){
+    if(dy/d<-.38)now.add('up');if(dy/d>.38)now.add('down');
+    if(dx/d<-.38)now.add('left');if(dx/d>.38)now.add('right');
+  }
+  (a.dirs||new Set()).forEach(k=>{if(!now.has(k))S.b.delete(k)});
+  now.forEach(k=>S.b.add(k));
+  a.dirs=now;dirty=true;
+  a.el.querySelectorAll('[data-d]').forEach(p=>p.classList.toggle('on',now.has(p.dataset.d)));
+}
+function stickMove(a,e){
+  const r=a.el.getBoundingClientRect(),R=r.width/2,T=R*.4;
+  const dx=e.clientX-(r.left+R),dy=e.clientY-(r.top+r.height/2);
+  const d=Math.hypot(dx,dy)||1e-9,v=Math.min(1,d/R),ux=dx/d,uy=dy/d;
+  a.el.firstElementChild.style.transform=`translate(${ux*v*T}px,${uy*v*T}px)`;
+  const s=a.T.side;
+  S[s+'x']=+(ux*v).toFixed(3);S[s+'y']=+(uy*v).toFixed(3);dirty=true;
+}
+function release(a){
+  const T=a.T;
+  if(!T)return;
+  if(T.kind==='btn'){key(T.k,false);a.el.classList.remove('on')}
+  else if(T.kind==='dpad'){(a.dirs||new Set()).forEach(k=>S.b.delete(k));a.dirs=null;a.el.querySelectorAll('[data-d]').forEach(p=>p.classList.remove('on'));dirty=true}
+  else if(T.kind==='stick'){a.el.firstElementChild.style.transform='';S[T.side+'x']=0;S[T.side+'y']=0;dirty=true}
+}
+function releaseAll(){act.forEach(release);act.clear()}
+
+stage.addEventListener('pointerdown',e=>{
+  const el=e.target.closest('.el');
+  if(!el){if(edit)select(null);return}
+  e.preventDefault();
+  const o=layout.find(z=>z.id===el.dataset.id);
+  if(!o)return;
+  try{el.setPointerCapture(e.pointerId)}catch(_){}
+  if(edit){
+    select(o.id);
+    act.set(e.pointerId,{drag:1,o,el,px:e.clientX,py:e.clientY,x0:o.x,y0:o.y});
+    return;
+  }
+  const T=TYPES[o.t],a={o,el,T};
+  act.set(e.pointerId,a);
+  if(T.kind==='btn'){key(T.k,true);el.classList.add('on');buzz()}
+  else if(T.kind==='dpad'){dpadMove(a,e);buzz()}
+  else stickMove(a,e);
+});
+stage.addEventListener('pointermove',e=>{
+  const a=act.get(e.pointerId);
+  if(!a)return;
+  if(a.drag){
+    a.o.x=clamp(a.x0+(e.clientX-a.px)/innerWidth,0,1);
+    a.o.y=clamp(a.y0+(e.clientY-a.py)/innerHeight,0,1);
+    styleEl(a.o,a.el);
+  }else if(a.T.kind==='dpad')dpadMove(a,e);
+  else if(a.T.kind==='stick')stickMove(a,e);
+});
+const end=e=>{
+  const a=act.get(e.pointerId);
+  if(!a)return;
+  act.delete(e.pointerId);
+  if(a.drag)save();else release(a);
+};
+['pointerup','pointercancel','lostpointercapture'].forEach(t=>stage.addEventListener(t,end));
+addEventListener('blur',releaseAll);
+
+/* ---------- edit mode ---------- */
+const panel=$('#panel'),bar=$('#bar'),gear=$('#gear'),hint=$('#hint');
+const cwh=$('#cwh'),sw=$('#sw'),sh=$('#sh');
+function setEdit(v){
+  releaseAll();
+  edit=v;sel=null;
+  document.body.classList.toggle('edit',v);
+  bar.hidden=!v;hint.hidden=!v;gear.hidden=v;
+  render();syncPanel();
+}
+function select(id){
+  sel=id;
+  stage.querySelectorAll('.el').forEach(x=>x.classList.toggle('sel',x.dataset.id===id));
+  syncPanel();
+}
+function syncPanel(){
+  const o=cur();
+  panel.hidden=!(edit&&o&&panelOpen);
+  if(!o)return;
+  const locked=TYPES[o.t].kind!=='btn';
+  if(locked){o.cwh=false;o.sy=o.sx}
+  cwh.checked=!!o.cwh;cwh.disabled=locked;
+  sw.value=Math.round(o.sx*100);sh.value=Math.round(o.sy*100);
+  $('#swv').textContent=sw.value+'%';$('#shv').textContent=sh.value+'%';
+  sh.disabled=!o.cwh;
+}
+function changed(o){styleEl(o,elOf(o.id));syncPanel();save()}
+sw.addEventListener('input',()=>{const o=cur();if(!o)return;o.sx=sw.value/100;if(!o.cwh)o.sy=o.sx;changed(o)});
+sh.addEventListener('input',()=>{const o=cur();if(!o)return;o.sy=sh.value/100;changed(o)});
+cwh.addEventListener('change',()=>{const o=cur();if(!o)return;o.cwh=cwh.checked;if(!o.cwh)o.sy=o.sx;changed(o)});
+$('#rst').onclick=()=>{
+  const o=cur();if(!o)return;
+  const d=DEF.find(z=>z.id===o.id);
+  Object.assign(o,d?clone(d):{x:.5,y:.5,sx:1,sy:1,c:RED});
+  changed(o);
+};
+$('#del').onclick=()=>{
+  if(!sel)return;
+  layout=layout.filter(o=>o.id!==sel);
+  save();select(null);render();
+};
+/* palette */
+const SW=$('#swatches');
+['#9b0000','#c2410c','#a16207','#15803d','#0e7490','#1d4ed8','#6d28d9','#be185d','#374151','#d4d4d8'].forEach(c=>{
+  const i=document.createElement('i');i.style.background=c;
+  i.onclick=()=>{const o=cur();if(!o)return;o.c=c;changed(o)};
+  SW.appendChild(i);
+});
+$('#pal').onclick=()=>{SW.hidden=!SW.hidden};
+/* toolbar */
+$('#bBack').onclick=()=>setEdit(false);
+$('#bTog').onclick=()=>{panelOpen=!panelOpen;$('#bTog').textContent=panelOpen?'⌃':'⌄';syncPanel()};
+$('#bSet').onclick=()=>openDlg();
+$('#bAdd').onclick=()=>{$('#add').hidden=false};
+$('#addClose').onclick=()=>{$('#add').hidden=true};
+Object.keys(TYPES).forEach(t=>{
+  const b=document.createElement('button');
+  b.className='b alt';b.textContent=TYPES[t].name;
+  b.onclick=()=>{
+    const id=t+'_'+Date.now().toString(36);
+    layout.push(mk(t,.5,.5,id));
+    save();$('#add').hidden=true;render();select(id);
+  };
+  $('#chips').appendChild(b);
+});
+
+/* ---------- settings dialog ---------- */
+const dlg=$('#dlg');
+function openDlg(){
+  $('#ip').value=cfg.ip;$('#port').value=cfg.port;$('#hap').checked=cfg.haptic;
+  $('#bEdit').hidden=edit;
+  dlg.hidden=false;
+}
+gear.onclick=openDlg;
+$('#bClose').onclick=()=>{dlg.hidden=true};
+$('#conn').onclick=()=>{
+  cfg.ip=$('#ip').value.trim();cfg.port=parseInt($('#port').value)||8080;
+  saveCfg();connect();
+};
+$('#hap').onchange=e=>{cfg.haptic=e.target.checked;saveCfg()};
+$('#bEdit').onclick=()=>{dlg.hidden=true;setEdit(true)};
+let armed=0;
+$('#bReset').onclick=e=>{
+  if(!armed){armed=1;e.target.textContent='Tap again to confirm';setTimeout(()=>{armed=0;e.target.textContent='Reset layout'},3000);return}
+  armed=0;e.target.textContent='Reset layout';
+  layout=clone(DEF);save();sel=null;render();syncPanel();
+};
+
+document.addEventListener('contextmenu',e=>e.preventDefault());
+render();connect();
+if(!cfg.ip)openDlg();
+})();
+</script>
+</body>
+</html>
