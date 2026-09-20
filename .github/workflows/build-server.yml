@@ -11,8 +11,14 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - run: pip install vgamepad aiohttp pyinstaller
-      - run: pyinstaller --onefile --collect-all vgamepad --name gamepad-server server.py
+      - name: Get vgamepad without its installer
+        shell: bash
+        run: |
+          curl -L -o vg.tar.gz https://files.pythonhosted.org/packages/8a/54/0eaddc33f84247963af078f364b37153d09fcd6cdc398f243ec3e8842c56/vgamepad-0.1.0.tar.gz
+          tar xzf vg.tar.gz
+          cp -r vgamepad-0.1.0/vgamepad ./vgamepad
+      - run: pip install aiohttp pyinstaller
+      - run: pyinstaller --onefile --paths . --add-data "vgamepad/win/vigem/client;vgamepad/win/vigem/client" --name gamepad-server server.py
       - uses: actions/upload-artifact@v4
         with:
           name: gamepad-server
