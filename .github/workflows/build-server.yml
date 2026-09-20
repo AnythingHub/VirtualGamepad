@@ -1,0 +1,19 @@
+name: Build PC server
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, master]
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install vgamepad aiohttp pyinstaller
+      - run: pyinstaller --onefile --collect-all vgamepad --name gamepad-server server.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gamepad-server
+          path: dist/gamepad-server.exe
